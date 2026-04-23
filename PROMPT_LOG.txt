@@ -1,0 +1,347 @@
+built with only Gemini Pro (using each of Pro/Thinking/Fast modes, but mainly Pro)
+1)  the app ive already built is on react native and some other stuff. i can send you the code. im interested in an "RPG" mode of the game. that is, being able to play against enemies that are typing while you're typing, and losing health incrementally when they're out-typing you. something i think would be interesting is having two game modes:
+
+* random words in random sequences, with 50 word tests
+
+* text pulled from actual texts. we'd probably have to use an API for this or store them in a way that's easy for the app to quickly extract the text from 
+2) im using react. i need you to brainstorm on a highlevel how you will first implement the RPG elements (worry about the 50 word and text pulled from APIs later).
+please give me the features you plan to implement, and how you will do that at a high level (using react) in bullets
+3) for now, let's just add the RPG features. i'll do the other shit way later on (im just trying to get a working demo working sooner rather than later, and then i'll add the 50 words thing and the quotable/gutendex API later on.) i need you to be careful and thoughtful with the code that you propose, ensuring its correctness, since my computer is pretty bad and i cant be giving you too many prompts bc they take long (not your fault, it's mine..)
+here is my app's README as of now:
+I made a typing test mobile app, called Rapid Type. It gives you 
+text and you have to type it as fast as possible, and it tells you how 
+fast you typed it in words per minute.
+I chose this because something I enjoy doing sometimes are typing tests.
+The first screen is the menu/title screen. It allows you to change 
+the game mode and start a match. It can be acccessed at any time during 
+gameplay by pressing "Give Up".
+Nothing additional beyond the standard setup we performed in lecture
+ is necessary to run the app. As a note, I have an Android phone and a 
+windows laptop.
+I was really surprised by how simple a lot of the process becomes 
+with the use of effective tools (like React/Expo and AI) once the 
+initial technical difficulties are out of the way.
+here's my app's code.tsx file (which you will be making changes to!)
+* import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TextInput, 
+  TouchableOpacity, 
+  Alert, 
+  SafeAreaView 
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// --- Expanded Sentence Bank ---
+const TARGET_SENTENCES = [
+  "The quick brown fox jumps over the lazy dog.",
+  "React Native makes building mobile apps intuitive.",
+  "Coding is the art of solving puzzles with logic.",
+  "AsyncStorage persists data across app restarts.",
+  "How fast can your fingers dance across the screen?",
+  "Pack my box with five dozen liquor jugs.",
+  "Jinxed wizards pluck ivy from the big quilt.",
+  "A journey of a thousand miles begins with a single step.",
+  "There is nothing permanent except change.",
+  "All human wisdom is summed up in two words: wait and hope.",
+  "To be or not to be, that is the question.",
+  "The only impossible journey is the one you never begin.",
+  "Innovation distinguishes between a leader and a follower.",
+  "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+  "Software and cathedrals are much the same; first we build them, then we pray."
+];
+
+export default function RapidTypeGame() {
+  // --- Game State ---
+  const [currentScreen, setCurrentScreen] = useState('Menu'); 
+  const [highScore, setHighScore] = useState(0);
+  const [allowErrors, setAllowErrors] = useState(false); // Toggle for Forgiving Mode
+  
+  // --- Active Game State ---
+  const [targetSentence, setTargetSentence] = useState('');
+  const [inputText, setInputText] = useState('');
+  const [startTime, setStartTime] = useState(null);
+
+  // Load high score when returning to the Menu
+  useEffect(() => {
+    if (currentScreen === 'Menu') {
+      const fetchHighScore = async () => {
+        try {
+          const storedScore = await AsyncStorage.getItem('@rapid_type_highscore');
+          if (storedScore !== null) {
+            setHighScore(parseInt(storedScore, 10));
+          }
+        } catch (e) {
+          console.error("Failed to load high score.");
+        }
+      };
+      fetchHighScore();
+    }
+  }, [currentScreen]);
+
+  // --- Actions ---
+  const startGame = () => {
+    const randomIndex = Math.floor(Math.random() * TARGET_SENTENCES.length);
+    setTargetSentence(TARGET_SENTENCES[randomIndex]);
+    setInputText('');
+    setStartTime(null);
+    setCurrentScreen('Game');
+  };
+
+  const handleTextChange = async (text) => {
+    // Start timer on first keystroke
+    if (!startTime && text.length > 0) {
+      setStartTime(Date.now());
+    }
+
+    setInputText(text);
+
+    // Win condition check based on current mode
+    if (allowErrors) {
+      // In Forgiving Mode, finish when they reach the sentence length
+      if (text.length >= targetSentence.length) {
+        finishGame(text.substring(0, targetSentence.length));
+      }
+    } else {
+      // In Perfect Mode, finish only when it matches perfectly
+      if (text === targetSentence) {
+        finishGame(text);
+      }
+    }
+  };
+
+  const finishGame = async (finalText) => {
+    const endTime = Date.now();
+    const timeInMinutes = (endTime - startTime) / 60000;
+    
+    const wordCount = targetSentence.length / 5;
+    const wpm = Math.round(wordCount / timeInMinutes);
+
+    // Calculate errors
+    let errorCount = 0;
+    for (let i = 0; i < finalText.length; i++) {
+      if (finalText[i] !== targetSentence[i]) {
+        errorCount++;
+      }
+    }
+
+    handleWin(wpm, errorCount);
+  };
+
+  const handleWin = async (wpm, errorCount) => {
+    try {
+      const storedScore = await AsyncStorage.getItem('@rapid_type_highscore');
+      const currentHigh = storedScore !== null ? parseInt(storedScore, 10) : 0;
+
+      let message = `Speed: ${wpm} WPM`;
+      
+      if (allowErrors) {
+        message += `\nErrors: ${errorCount}`;
+      }
+
+      if (wpm > currentHigh) {
+        await AsyncStorage.setItem('@rapid_type_highscore', wpm.toString());
+        message += "\n\n🎉 NEW HIGH SCORE! 🎉";
+      }
+
+      Alert.alert(
+        "Complete!",
+        message,
+        [{ text: "Awesome", onPress: () => setCurrentScreen('Menu') }],
+        { cancelable: false }
+      );
+    } catch (e) {
+      console.error("Failed to save score.");
+      setCurrentScreen('Menu');
+    }
+  };
+
+  // --- Render Helpers ---
+  const renderTargetText = () => {
+    return (
+      <Text style={styles.targetSentenceBox}>
+        {targetSentence.split('').map((char, index) => {
+          let color = '#333';
+          let backgroundColor = 'transparent';
+          
+          if (index < inputText.length) {
+            const isCorrect = inputText[index] === char;
+            color = isCorrect ? '#4CAF50' : '#FFF'; 
+            backgroundColor = isCorrect ? 'transparent' : '#F44336'; // Highlight typos with red background
+          }
+          return (
+            <Text key={index} style={{ color, backgroundColor }}>
+              {char}
+            </Text>
+          );
+        })}
+      </Text>
+    );
+  };
+
+  // --- Screen Renders ---
+  if (currentScreen === 'Menu') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.menuContent}>
+          <Text style={styles.title}>RAPID TYPE</Text>
+          <Text style={styles.scoreText}>All-Time High Score: {highScore} WPM</Text>
+          
+          <TouchableOpacity style={styles.startButton} onPress={startGame}>
+            <Text style={styles.startButtonText}>START GAME</Text>
+          </TouchableOpacity>
+
+          {/* Mode Toggle Button */}
+          <TouchableOpacity 
+            style={styles.modeButton} 
+            onPress={() => setAllowErrors(!allowErrors)}
+          >
+            <Text style={styles.modeButtonText}>
+              Mode: {allowErrors ? 'Forgiving (Allows Typos)' : 'Perfect (Strict)'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.gameContent}>
+        {renderTargetText()}
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Start typing here..."
+          value={inputText}
+          onChangeText={handleTextChange}
+          autoFocus={true}
+          autoCorrect={false}
+          autoCapitalize="none"
+          maxLength={allowErrors ? targetSentence.length : undefined} // Prevent over-typing in Forgiving mode
+        />
+
+        <TouchableOpacity 
+          style={styles.cancelButton} 
+          onPress={() => setCurrentScreen('Menu')}
+        >
+          <Text style={styles.cancelButtonText}>Give Up</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// --- Styles ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  menuContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  title: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#222',
+    letterSpacing: 2,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  scoreText: {
+    fontSize: 18,
+    color: '#666',
+    fontWeight: '600',
+    marginBottom: 50,
+  },
+  startButton: {
+    backgroundColor: '#222',
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 30,
+    elevation: 3, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    marginBottom: 20,
+  },
+  startButtonText: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  modeButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#CCC',
+  },
+  modeButtonText: {
+    color: '#555',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  gameContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  targetSentenceBox: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    lineHeight: 40,
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  input: {
+    width: '100%',
+    height: 60,
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#CCC',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    fontSize: 20,
+    marginBottom: 30,
+    elevation: 1,
+  },
+  cancelButton: {
+    padding: 15,
+  },
+  cancelButtonText: {
+    color: '#F44336',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+});
+4) ok, nice the game is working. how does it work so far though? i just see my health bar going down with time and the enemy's health bar not going down until it goes to another enemy. it doesn't feel meaningfully interactive, and we need to do better. also, i have noticed that the user text box is not visible when the keyboard is on screen, so it is important that we move the text to be typed, as well as the text box up a bit on the screen. (think moving them up like 1/10 of the length of the screen or something)
+5) this is better, but it still needs to feel meaningfully interactive:
+we should see enemies on screen, perhaps a differently-highlighted text of the enemy "typing" the text. there should be different difficulties (how fast the enemy types). and it's also very important that after each defeat, players get some of their health back (which should also vary with the difficulty selected.) once again, ensure the absolute correctness of these changes
+6) this is crucial: the player should not lose health while they're ahead of the enemy (that is, while the text isn't highlighted red by the enemy 'typing')
+7) nice! a couple things though:
+* player still isn't getting health back after each enemy is defeated
+* there should be a short time before the enemy starts typing (say a quarter of a second or a bit less) to allow the user to get their footing with typing a new text before getting attacked.
+* there should be some sort of animation or something after an enemy is defeated, switching to the next enemy. this ensures users do not accidentally continue typing the current text if the enemy is defeated before the text is over.
+8) alright right now the WPM is not meaningfully accurate. that is, it should average the WPM across all matches against enemies in a tournament. it should also not start tracking WPM until the user types. this way, we can get higher accuracy of the true wpm
+9) the time for the enemy to begin typing is not starting after the user begins typing for each match in the tournament. this is an important change because the user can't really get their bearings on a new text
+10) let's make each mode relative to the user's skill. say we make hard mode 85% of the user's high score, and have the other game modes be relative as well but a smaller percent (you can decide these, be reasonable but not too easy for each gamemode)
+11) none of the modes are challenging enough. can you raise the percents
+12) this all looks great! let's add an ability to switch between this mode and a separate, single-text mode (for which the high-score WPM is stored differently). this way, users can switch between RPG mode and standard typing mode.
+13) earlier, we talked about adding random words in each exercise, as well as pulling random sentences from API. do you remember this?
+14) yes. can you PLEASE implement each of these features, ensuring absolute correctness (since once again it is hard for me to test these features on my poor-performance laptop). so double and triple check everything, which is once again completely allowed according to the specification of the assignment, as well as a wo9rthy investment of our additional time and resources. so please implement both of these features, ensuring particularly syntactic correctness, a cohesive implementation into the game, working for each of perfect/forgiving modes, as well as each of the RPG mode/standard mode. ensure correctness of API calls, API usage/syntax, etc. use free APIs that do not require API keys, and let me know if you run into any issues rather than making some bullshit code. once again ensure absolute correctness of everything and take your time
+15) can you please use a different random sentence API? maybe one from texts. the main problem i have with it right now is:
+* for the random sentence one, many of the sentences require every word to start with a capital letter, which is not ideal.
+* for the random text one, it's pulling too many uncommon words (maybe we should use an API of more common words)
+16) right now, the rpg enemy's health does not lower after even a single mistake occurs. it should simply not lower the enemy's health for each mistake, but subsequent correctly typed letters should lower the enemy's health
+
+at this point, i decided to implement scrolling for texts that are too long, displaying the next line to be typed (to make determining what to type next a more fluid process for the users).
